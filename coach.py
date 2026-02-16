@@ -37,8 +37,8 @@ class ChessCoach:
         
         # 2. Define the Prompt Template for move explanation
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a chess coach. Explain the move briefly in 1-2 sentences. Don't use markdown bolding."),
-            ("user", "Board FEN: {fen}. Move: {move}. Score: {score}. Why is this move good?")
+            ("system", "You are a chess coach. Explain the chess move briefly in 1-2 sentences focusing on its strategic purpose. Don't use markdown bolding."),
+            ("user", "{player} played: {move}. Evaluation score: {score}. Why is this move good?")
         ])
         
         # 3. Create the Chain for move explanation
@@ -47,21 +47,39 @@ class ChessCoach:
         # 4. Chat history for cross-questioning
         self.chat_history = []
         self.current_fen = None
+        self.current_move = None
+        self.current_score = None
+        self.current_player = None
+        self.move_history = []  # Track all moves with player info
 
-    def explain_move(self, fen: str, move_san: str, score: int) -> str:
+    def explain_move(self, fen: str, move_san: str, score: int, player: str = "AI") -> str:
         try:
-            # Reset chat history when analyzing a new position
+            # Store context for follow-up questions
             self.current_fen = fen
+            self.current_move = move_san
+            self.current_score = score
+            self.current_player = player
             self.chat_history = []
             
+            # Add to move history
+            self.move_history.append({
+                "player": player,
+                "move": move_san,
+                "score": score
+            })
+            
+            # Keep only last 10 moves
+            if len(self.move_history) > 10:
+                self.move_history = self.move_history[-10:]
+            
             response = self.chain.invoke({
-                "fen": fen,
+                "player": player,
                 "move": move_san,
                 "score": score
             })
             
             # Store the initial explanation in chat history
-            self.chat_history.append(HumanMessage(content=f"Board FEN: {fen}. Move: {move_san}. Score: {score}. Why is this move good?"))
+            self.chat_history.append(HumanMessage(content=f"{player} played: {move_san}. Evaluation score: {score}. Why is this move good?"))
             self.chat_history.append(AIMessage(content=response))
             
             return response
@@ -70,15 +88,28 @@ class ChessCoach:
     
     def ask_followup(self, question: str) -> str:
         """
-        Ask a follow-up question about the current position.
+        Ask a follow-up question about the current position or move history.
         """
         try:
-            if not self.current_fen:
+            if not self.current_move:
                 return "Please analyze a move first before asking follow-up questions."
+            
+            # Build move history context
+            move_context = "\n".join([
+                f"{m['player']}: {m['move']} (score: {m['score']})" 
+                for m in self.move_history[-5:]  # Last 5 moves
+            ])
             
             # Create a prompt with chat history for context
             messages = [
-                ("system", f"You are a chess coach analyzing position: {self.current_fen}. Answer the user's question briefly and clearly. Don't use markdown bolding.")
+                ("system", f"""You are a chess coach. 
+
+Recent moves:
+{move_context}
+
+Last move: {self.current_player} played {self.current_move} (score: {self.current_score})
+
+Answer the user's chess question clearly and briefly. When they ask about "my move" or "their move", refer to the player who made that specific move. Focus on practical chess advice. Don't use markdown bolding.""")
             ]
             
             # Add chat history
@@ -106,6 +137,6 @@ class ChessCoach:
             return f"Coach is offline: {str(e)}"
     
     def clear_history(self):
-        """Clear the chat history."""
+        """Clear the chat history but keep move history."""
         self.chat_history = []
-        self.current_fen = None
+        # Don't clear move_history so we can still reference previous moves

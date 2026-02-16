@@ -22,6 +22,8 @@ if "coach_explanation" not in st.session_state:
     st.session_state.coach_explanation = ""
 if "chat_messages" not in st.session_state:
     st.session_state.chat_messages = []
+if "last_player" not in st.session_state:
+    st.session_state.last_player = None
 
 # --- HELPER FUNCTIONS ---
 def render_board(board):
@@ -47,21 +49,34 @@ with col_game:
             # 1. Player Move
             user_move = board.parse_san(move_input)
             if user_move in board.legal_moves:
+                player_move_san = board.san(user_move)
                 board.push(user_move)
-                st.session_state.history.append(f"👤 You: {move_input}")
+                st.session_state.history.append(f"👤 You: {player_move_san}")
+                
+                # Get evaluation of player's move
+                _, player_analysis = st.session_state.engine.get_best_move(board)
+                
+                # Coach explains YOUR move
+                with st.spinner("Coach is analyzing your move..."):
+                    player_explanation = st.session_state.coach.explain_move(
+                        board.fen(), player_move_san, player_analysis['eval'], player="You"
+                    )
+                    st.session_state.coach_explanation = f"**Your move: {player_move_san}**\n\n{player_explanation}"
+                    st.session_state.last_player = "You"
+                    st.session_state.chat_messages = []
                 
                 if not board.is_game_over():
                     # 2. Engine Move
                     with st.spinner("Engine is calculating..."):
                         best_move, analysis = st.session_state.engine.get_best_move(board)
                         
-                        # 3. Coach Explanation
-                        with st.spinner("Coach is analyzing..."):
+                        # 3. Coach Explanation for AI move
+                        with st.spinner("Coach is analyzing AI move..."):
                             explanation = st.session_state.coach.explain_move(
-                                board.fen(), analysis['move'], analysis['eval']
+                                board.fen(), analysis['move'], analysis['eval'], player="AI"
                             )
-                            st.session_state.coach_explanation = explanation
-                            # Clear previous chat when new move is analyzed
+                            st.session_state.coach_explanation = f"**AI's move: {analysis['move']}**\n\n{explanation}"
+                            st.session_state.last_player = "AI"
                             st.session_state.chat_messages = []
                         
                         board.push(best_move)
@@ -79,6 +94,7 @@ with col_game:
         st.session_state.history = []
         st.session_state.coach_explanation = ""
         st.session_state.chat_messages = []
+        st.session_state.last_player = None
         st.session_state.coach.clear_history()
         st.rerun()
 
@@ -94,6 +110,7 @@ with col_info:
     # Cross-questioning section
     st.markdown("---")
     st.subheader("💬 Ask the Coach")
+    st.caption("Ask about any move - yours or the AI's!")
     
     if st.session_state.coach_explanation:
         # Display chat history
@@ -105,7 +122,7 @@ with col_info:
                 chat_container.info(f"**Coach:** {msg['content']}")
         
         # Question input
-        user_question = st.text_input("Ask about the last move:", key="follow_up_question", placeholder="e.g., What if I played differently?")
+        user_question = st.text_input("Ask about the last move or position:", key="follow_up_question", placeholder="e.g., What if I played differently?")
         
         col_q1, col_q2 = st.columns([3, 1])
         with col_q1:

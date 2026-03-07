@@ -12,6 +12,9 @@ env/
 # Environment variables
 .env
 
+# Runtime state
+game_state.json
+
 # IDE
 .vscode/
 .idea/

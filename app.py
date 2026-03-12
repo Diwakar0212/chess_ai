@@ -118,24 +118,42 @@ with col_game:
                     st.session_state.last_player = "You"
                 
                 if not board.is_game_over():
-                    # 2. Engine Move
-                    with st.spinner("Engine is calculating..."):
+                    # 2. Engine Move (calculate immediately)
+                    with st.spinner("🤖 Engine is calculating..."):
                         best_move, analysis = st.session_state.engine.get_best_move(board)
-                        
-                        # 3. Coach Explanation for AI move
-                        with st.spinner("Coach is analyzing AI move..."):
-                            explanation = st.session_state.coach.explain_move(
-                                board.fen(), analysis['move'], analysis['eval'], player="AI"
-                            )
-                            st.session_state.coach_explanation = f"**AI's move: {analysis['move']}**\n\n{explanation}"
-                            st.session_state.last_player = "AI"
-                        
+                    
+                    if best_move:
+                        # Apply move immediately to board
                         board.push(best_move)
-                        st.session_state.history.append(f"🤖 AI ({analysis['move']}): {explanation}")
+                        st.session_state.board = board
+                        
+                        # Display engine move IMMEDIATELY
+                        st.success(f"🤖 Engine plays: {analysis['move']}")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("Evaluation", f"{analysis['eval']/100:.2f} pawns")
+                            st.caption(f"Nodes: {analysis['nodes']:,}")
+                        with col2:
+                            st.caption(f"Time: {analysis['time']:.2f}s")
+                        
+                        # Get coach commentary for new position (non-blocking)
+                        coach_placeholder = st.empty()
+                        with coach_placeholder.spinner("💭 Coach analyzing the new position..."):
+                            try:
+                                explanation = st.session_state.coach.explain_move(
+                                    board.fen(), analysis['move'], analysis['eval'], player="AI"
+                                )
+                                st.session_state.coach_explanation = f"**AI's move: {analysis['move']}**\n\n{explanation}"
+                                st.session_state.last_player = "AI"
+                                coach_placeholder.info(f"💭 Coach: {explanation}")
+                            except Exception as e:
+                                coach_placeholder.warning(f"Coach is thinking deeper... ({str(e)[:50]})")
+                        
+                        st.session_state.history.append(f"🤖 AI ({analysis['move']}): Move played")
                         save_state_for_http()
                         st.rerun()
                 else:
-                    st.success("Game Over!")
+                    st.success("🏆 Game Over!")
             else:
                 st.error("Illegal move!")
         except ValueError:

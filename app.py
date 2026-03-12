@@ -104,7 +104,6 @@ with col_game:
             if user_move in board.legal_moves:
                 player_move_san = board.san(user_move)
                 board.push(user_move)
-                st.session_state.history.append(f"👤 You: {player_move_san}")
                 
                 # Get evaluation of player's move
                 _, player_analysis = st.session_state.engine.get_best_move(board)
@@ -116,6 +115,8 @@ with col_game:
                     )
                     st.session_state.coach_explanation = f"**Your move: {player_move_san}**\n\n{player_explanation}"
                     st.session_state.last_player = "You"
+                    # Add to history for commentary section
+                    st.session_state.history.append(f"👤 You ({player_move_san}): {player_explanation}")
                 
                 if not board.is_game_over():
                     # 2. Engine Move (calculate immediately)
@@ -146,10 +147,13 @@ with col_game:
                                 st.session_state.coach_explanation = f"**AI's move: {analysis['move']}**\n\n{explanation}"
                                 st.session_state.last_player = "AI"
                                 coach_placeholder.info(f"💭 Coach: {explanation}")
+                                
+                                # Add to history for commentary section
+                                st.session_state.history.append(f"🤖 AI ({analysis['move']}): {explanation}")
                             except Exception as e:
                                 coach_placeholder.warning(f"Coach is thinking deeper... ({str(e)[:50]})")
+                                st.session_state.history.append(f"🤖 AI ({analysis['move']}): Move played")
                         
-                        st.session_state.history.append(f"🤖 AI ({analysis['move']}): Move played")
                         save_state_for_http()
                         st.rerun()
                 else:

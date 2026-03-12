@@ -5,6 +5,7 @@ import base64
 import json
 import os
 import time
+import requests
 from chess_engine import ChessEngine1500
 from coach import ChessCoach
 
@@ -143,12 +144,24 @@ with col_game:
             st.error("Invalid move format.")
 
     if st.button("Reset Game"):
+        # Reset Streamlit session state
         st.session_state.board.reset()
         st.session_state.history = []
         st.session_state.coach_explanation = ""
         st.session_state.chat_messages = []
         st.session_state.last_player = None
         st.session_state.coach.clear_history()
+        
+        # Reset the engine
+        st.session_state.engine.reset_engine()
+        
+        # Reset HTTP server too
+        try:
+            requests.get("http://localhost:8000/reset", timeout=2)
+        except:
+            pass  # Server might not be running, that's ok
+        
+        # Sync state with HTTP server
         save_state_for_http()
         st.rerun()
 

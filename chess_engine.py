@@ -1,5 +1,7 @@
 """
 Chess Engine - 1500 Elo Strength (Web App Compatible)
+Features: minimax, alpha-beta pruning, null move pruning, late move reductions,
+          iterative deepening, quiescence search, opening book
 """
 
 import chess
@@ -356,6 +358,10 @@ class ChessEngine1500:
                 score += 9000
             if depth in self.killer_moves and move in self.killer_moves[depth]:
                 score += 8000
+            move_key = f"{move.from_square}-{move.to_square}"
+            score += self.history_scores.get(move_key, 0)
+            if move.to_square in [chess.E4, chess.E5, chess.D4, chess.D5]:
+                score += 50
             return score
         return sorted(moves, key=move_score, reverse=True)
 
@@ -365,6 +371,24 @@ class ChessEngine1500:
             self.killer_moves[depth].insert(0, move)
             if len(self.killer_moves[depth]) > 2: self.killer_moves[depth].pop()
 
+    def update_history(self, move: chess.Move, depth: int):
+        move_key = f"{move.from_square}-{move.to_square}"
+        self.history_scores[move_key] = self.history_scores.get(move_key, 0) + depth * depth
+
+    def should_reduce(self, board: chess.Board, move: chess.Move, move_number: int, depth: int) -> bool:
+        """Determine if Late Move Reduction should be applied"""
+        if board.is_capture(move):
+            return False
+        if board.gives_check(move):
+            return False
+        if move.promotion:
+            return False
+        if depth < 3:
+            return False
+        if move_number < 4:
+            return False
+        return True
+
     def quiescence_search(self, board: chess.Board, alpha: int, beta: int, depth: int = 0) -> int:
         self.nodes_searched += 1
         stand_pat = self.evaluate_position(board)
@@ -373,7 +397,7 @@ class ChessEngine1500:
         if alpha < stand_pat: alpha = stand_pat
         
         for move in board.legal_moves:
-            if board.is_capture(move) or move.promotion:
+            if board.is_capture(move) or board.gives_check(move) or move.promotion:
                 board.push(move)
                 score = -self.quiescence_search(board, -beta, -alpha, depth + 1)
                 board.pop()
@@ -391,7 +415,7 @@ class ChessEngine1500:
         if board.is_game_over(): return 0
         
         # Null Move Pruning
-        if allow_null and depth >= 3 and not board.is_check():
+        if allow_null and depth >= 3 and not board.is_check() and not self.is_endgame(board):
             board.push(chess.Move.null())
             score = -self.minimax(board, depth - 1 - 2, -beta, -beta + 1, False, allow_null=False)
             board.pop()
@@ -399,16 +423,27 @@ class ChessEngine1500:
 
         best_score = float('-inf')
         ordered_moves = self.order_moves(board, list(board.legal_moves), depth)
+        move_count = 0
         
         for move in ordered_moves:
             board.push(move)
-            score = -self.minimax(board, depth - 1, -beta, -alpha, not maximizing, allow_null)
+            move_count += 1
+            
+            # Late Move Reduction
+            if self.should_reduce(board, move, move_count, depth):
+                score = -self.minimax(board, depth - 2, -beta, -alpha, not maximizing, allow_null)
+                if score > alpha:
+                    score = -self.minimax(board, depth - 1, -beta, -alpha, not maximizing, allow_null)
+            else:
+                score = -self.minimax(board, depth - 1, -beta, -alpha, not maximizing, allow_null)
+            
             board.pop()
             
             if score > best_score: best_score = score
             if score > alpha: alpha = score
             if alpha >= beta:
                 self.update_killers(move, depth)
+                self.update_history(move, depth)
                 break
         
         self.transposition_table[board_hash] = {'score': best_score, 'depth': depth}
@@ -455,6 +490,11 @@ class ChessEngine1500:
         except: return None
 
     def get_best_move(self, board: chess.Board) -> Tuple[Optional[chess.Move], Dict]:
+        # Clear transposition table if too large
+        if len(self.transposition_table) > 500000:
+            self.transposition_table.clear()
+            self.killer_moves.clear()
+        
         # Try opening book
         book_move = self.get_book_move(board)
         if book_move and board.fullmove_number <= 10:
@@ -465,3 +505,10 @@ class ChessEngine1500:
             }
         
         return self.iterative_deepening(board)
+    
+    def reset_engine(self):
+        """Reset engine state for a new game"""
+        self.transposition_table.clear()
+        self.killer_moves.clear()
+        self.history_scores.clear()
+        self.nodes_searched = 0

@@ -116,7 +116,6 @@ with col_game:
                     )
                     st.session_state.coach_explanation = f"**Your move: {player_move_san}**\n\n{player_explanation}"
                     st.session_state.last_player = "You"
-                    st.session_state.chat_messages = []
                 
                 if not board.is_game_over():
                     # 2. Engine Move
@@ -130,7 +129,6 @@ with col_game:
                             )
                             st.session_state.coach_explanation = f"**AI's move: {analysis['move']}**\n\n{explanation}"
                             st.session_state.last_player = "AI"
-                            st.session_state.chat_messages = []
                         
                         board.push(best_move)
                         st.session_state.history.append(f"🤖 AI ({analysis['move']}): {explanation}")

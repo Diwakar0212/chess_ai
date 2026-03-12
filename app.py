@@ -128,36 +128,19 @@ with col_game:
                         board.push(best_move)
                         st.session_state.board = board
                         
-                        # Display engine move IMMEDIATELY
-                        st.success(f"🤖 Engine plays: {analysis['move']}")
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("Evaluation", f"{analysis['eval']/100:.2f} pawns")
-                            st.caption(f"Nodes: {analysis['nodes']:,}")
-                        with col2:
-                            st.caption(f"Time: {analysis['time']:.2f}s")
-                        
-                        # Get coach commentary for new position (non-blocking)
-                        coach_placeholder = st.empty()
-                        with coach_placeholder.spinner("💭 Coach analyzing the new position..."):
-                            try:
-                                explanation = st.session_state.coach.explain_move(
-                                    board.fen(), analysis['move'], analysis['eval'], player="AI"
-                                )
-                                st.session_state.coach_explanation = f"**AI's move: {analysis['move']}**\n\n{explanation}"
-                                st.session_state.last_player = "AI"
-                                coach_placeholder.info(f"💭 Coach: {explanation}")
-                                
-                                # Add to history for commentary section
-                                st.session_state.history.append(f"🤖 AI ({analysis['move']}): {explanation}")
-                            except Exception as e:
-                                coach_placeholder.warning(f"Coach is thinking deeper... ({str(e)[:50]})")
-                                st.session_state.history.append(f"🤖 AI ({analysis['move']}): Move played")
+                        # Store engine move info for commentary (will load after rerun)
+                        st.session_state.pending_engine_move = {
+                            'move': analysis['move'],
+                            'eval': analysis['eval'],
+                            'fen': board.fen()
+                        }
                         
                         save_state_for_http()
-                        st.rerun()
+                        st.rerun()  # RERUN IMMEDIATELY - board updates instantly
                 else:
                     st.success("🏆 Game Over!")
+                    save_state_for_http()
+                    st.rerun()
             else:
                 st.error("Illegal move!")
         except ValueError:
@@ -183,7 +166,24 @@ with col_game:
         
         # Sync state with HTTP server
         save_state_for_http()
-        st.rerun()
+
+# Handle pending engine move commentary (after board is displayed)
+if st.session_state.get("pending_engine_move"):
+    pending = st.session_state.pending_engine_move
+    with st.spinner("💭 Coach is analyzing the position..."):
+        try:
+            explanation = st.session_state.coach.explain_move(
+                pending['fen'], pending['move'], pending['eval'], player="AI"
+            )
+            st.session_state.coach_explanation = f"**AI's move: {pending['move']}**\n\n{explanation}"
+            st.session_state.last_player = "AI"
+            st.session_state.history.append(f"🤖 AI ({pending['move']}): {explanation}")
+        except Exception as e:
+            st.session_state.history.append(f"🤖 AI ({pending['move']}): Move played")
+    
+    st.session_state.pending_engine_move = None
+    save_state_for_http()
+    st.rerun()
 
 with col_info:
     st.subheader("🎙️ Commentary")
@@ -219,13 +219,11 @@ with col_info:
                         answer = st.session_state.coach.ask_followup(user_question)
                         st.session_state.chat_messages.append({"role": "user", "content": user_question})
                         st.session_state.chat_messages.append({"role": "assistant", "content": answer})
-                        st.rerun()
         
         with col_q2:
             if st.button("Clear", use_container_width=True):
                 st.session_state.chat_messages = []
                 st.session_state.coach.clear_history()
-                st.rerun()
     else:
         st.info("Make a move to start asking questions!")
 
